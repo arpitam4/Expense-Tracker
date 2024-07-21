@@ -27,8 +27,14 @@ selected_rowid = 0
 
 def saveRecord():
     global data
-    data.insertRecord(item_name=item_name.get(), item_price=item_amt.get(), purchase_date=transaction_date.get())
-    refreshData()
+    date_str = transaction_date.get()
+    try:
+        date_obj = dt.datetime.strptime(date_str, '%d %B %Y')
+        formatted_date = date_obj.strftime('%Y-%m-%d')
+        data.insertRecord(item_name=item_name.get(), item_price=item_amt.get(), purchase_date=formatted_date)
+        refreshData()
+    except ValueError as e:
+        messagebox.showerror('Date Error', f'Incorrect date format: {e}')
 
 def setDate():
     date = dt.datetime.now()
@@ -40,40 +46,38 @@ def clearEntries():
     transaction_date.delete(0, 'end')
 
 def fetchRecords():
-    f = data.fetchRecord('SELECT id, item_name, item_price, purchase_date FROM expense_record')
     global count
-    for rec in f:
-        tv.insert(parent='', index='0', iid=count, values=(rec[0], rec[1], rec[2], rec[3]))
+    records = data.fetchRecord('SELECT id, item_name, item_price, purchase_date FROM expense_record')
+    for rec in records:
+        date_str = rec[3].strftime('%d %B %Y') if isinstance(rec[3], dt.date) else rec[3]
+        tv.insert(parent='', index='end', iid=count, values=(rec[0], rec[1], rec[2], date_str))
         count += 1
-    tv.after(400, refreshData)
 
 def fetch_records(event):
     global selected_rowid
     selected = tv.focus()
     val = tv.item(selected, 'values')
 
-    try:
+    if val:  # Check if a valid item is selected
         selected_rowid = val[0]
-        d = val[3]
+        print(f'Selected Row ID: {selected_rowid}')  # Debug print
         namevar.set(val[1])
         amtvar.set(val[2])
-        dopvar.set(str(d))
-    except Exception as ep:
-        pass
+        dopvar.set(val[3])
 
 def update_record():
     global selected_rowid
-
-    selected = tv.focus()
-
+    print(f'Updating Row ID: {selected_rowid}')  # Debug print
     try:
-        data.updateRecord(namevar.get(), amtvar.get(), dopvar.get(), selected_rowid)
-        tv.item(selected, text="", values=(selected_rowid, namevar.get(), amtvar.get(), dopvar.get()))
+        date_str = dopvar.get()
+        date_obj = dt.datetime.strptime(date_str, '%d %B %Y')
+        formatted_date = date_obj.strftime('%Y-%m-%d')
+        data.updateRecord(namevar.get(), amtvar.get(), formatted_date, selected_rowid)
+        refreshData()
     except Exception as ep:
-        messagebox.showerror('Error', ep)
+        messagebox.showerror('Error updating record', ep)
 
     clearEntries()
-    refreshData()
 
 def totalBalance():
     f = data.fetchRecord("SELECT SUM(item_price) FROM expense_record")
@@ -88,6 +92,7 @@ def refreshData():
 
 def deleteRow():
     global selected_rowid
+    print(f'Deleting Row ID: {selected_rowid}')  # Debug print
     data.removeRecord(selected_rowid)
     refreshData()
 
@@ -110,7 +115,7 @@ Label(f1, text='ITEM NAME', font=f).grid(row=0, column=0, sticky=W)
 Label(f1, text='ITEM PRICE', font=f).grid(row=1, column=0, sticky=W)
 Label(f1, text='PURCHASE DATE', font=f).grid(row=2, column=0, sticky=W)
 
-item_name = Entry(f1, font=f)
+item_name = Entry(f1, font=f, textvariable=namevar)
 item_amt = Entry(f1, font=f, textvariable=amtvar)
 transaction_date = Entry(f1, font=f, textvariable=dopvar)
 
@@ -123,7 +128,6 @@ submit_btn = Button(f1, text='Save Record', font=f, command=saveRecord, bg='#426
 clr_btn = Button(f1, text='Clear Entry', font=f, command=clearEntries, bg='#D9B036', fg='white')
 quit_btn = Button(f1, text='Exit', font=f, command=ws.quit, bg='#D33532', fg='white')
 total_bal = Button(f1, text='Total Balance', font=f, bg='#486966', fg='white', command=totalBalance)
-total_spent = Button(f1, text='Total Spent', font=f, fg='white', command=totalBalance)
 update_btn = Button(f1, text='Update', bg='#C2BB00', command=update_record, fg='white', font=f)
 del_btn = Button(f1, text='Delete', bg='#BD2A2E', fg='white', command=deleteRow, font=f)
 
@@ -155,5 +159,10 @@ scrollbar = Scrollbar(f2, orient='vertical')
 scrollbar.configure(command=tv.yview)
 scrollbar.pack(side="right", fill="y")
 tv.config(yscrollcommand=scrollbar.set)
+
+# Bind the Treeview select event
+tv.bind("<<TreeviewSelect>>", fetch_records)
+
+fetchRecords()
 
 ws.mainloop()
